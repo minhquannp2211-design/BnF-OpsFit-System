@@ -7,6 +7,8 @@ import math
 import re
 import unicodedata #for creating food_id
 
+from backend.utils.unit_conversion import are_compatible_units
+
 
 CURRENT_DIR = Path(__file__).resolve().parent
 FILE_PATH = CURRENT_DIR.parent.parent / "data" / "templates" / "BnF_Opsfit_System.xlsx"
@@ -424,9 +426,9 @@ for recipe_key, recipe_details in recipe_dict.items():
 
         package_unit = ingredient[4]
 
-        if (
-            normalize_text(ingredient_unit)
-            != normalize_text(package_unit)
+        if not are_compatible_units(
+            ingredient_unit,
+            package_unit,
         ):
             raise ValueError(
                 f"Unit mismatch for ingredient "
