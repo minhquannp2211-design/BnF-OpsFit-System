@@ -79,9 +79,34 @@ def operating_profit_margin(operating_profit, total_revenue):
 def fixed_cost_ratio(total_fixed_cost, total_revenue):
    fixed_cost_ratio = total_fixed_cost / total_revenue
    return fixed_cost_ratio
-
-
-
-
-
+def threshold_popularity (total_volumn, menu_size):
+   threshold_popularity = total_volumn / menu_size
+   return threshold_popularity
+def threshold_profit(total_contribution_margin, total_volume):
+   threshold_profit = total_contribution_margin / total_volume
+   return threshold_profit
+def total_volume(quantity_sold):
+   total_volume = 0
+   n = len(quantity_sold)
+   for i in range(n):
+      total_volume += quantity_sold[i]
+   return total_volume
+total_contribution_margin = total_contribution_margin(total_revenue, total_cogs)
+menu_size = len(quantity_sold)
+def item_classification(threshold_popularity, threshold_profit, quantity_sold, total_contribution_margin):
+   if quantity_sold >= threshold_popularity and total_contribution_margin >= threshold_profit:
+      classify_item = "STAR"
+   elif quantity_sold >= threshold_popularity and total_contribution_margin < threshold_profit:
+      classify_item = "PLOWHORSE"
+   elif quantity_sold < threshold_popularity and total_contribution_margin >= threshold_profit:
+      classify_item = "PUZZLE"
+   else :
+      classify_item = "DOG"
+   return classify_item
+def menu_classification(threshold_popularity, threshold_profit, quantity_sold, total_contribution_margin):
+   menu_classification = []
+   n = len(quantity_sold)
+   for i in range(n):
+      menu_classification.append(item_classification(threshold_popularity, threshold_profit, quantity_sold[i], total_contribution_margin[i]))
+   return menu_classification
 
