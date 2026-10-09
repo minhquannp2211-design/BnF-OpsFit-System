@@ -1,112 +1,230 @@
-def raw_unit_cost(package_price, standard_package_quantity):
-   raw_unit_cost = package_price / standard_package_quantity
-   return raw_unit_cost
+from decimal import Decimal, ROUND_HALF_UP
+from typing import Sequence
 
-def usable_quantity(standard_package_quantity, waste_rate):
-   usable_quantity = standard_package_quantity * (1 - waste_rate)
-   return usable_quantity
 
-def effective_unit_cost(usable_quantity, package_price ):
-   effective_unit_cost = package_price / usable_quantity
-   return effective_unit_cost
+ZERO = Decimal("0")
+ONE = Decimal("1")
 
-def ingredient_line_cost(standard_ingredient_quantity, effective_unit_cost ):
-   ingredient_line_cost = standard_ingredient_quantity * effective_unit_cost
-   return ingredient_line_cost
 
-def unit_cogs(ingredient_line_cost):
-   unit_cogs = 0
-   n = len(ingredient_line_cost)
-   for i in range(n):
-      unit_cogs += ingredient_line_cost[i]
-   return unit_cogs
-def monthly_cost (amount, month_period):
-   monthly_cost = amount / month_period
-   return monthly_cost
-def monthly_depreciation (amount, useful_life_months):
-   monthly_depreciation = amount / useful_life_months
-   return monthly_depreciation
-def total_fixed_cost(monthly_cost, monthly_depreciation):
-   total_monthly_cost = 0
-   n = len(monthly_cost)
-   for i in range(n):
-      total_monthly_cost += monthly_cost[i]
-   total_monthly_depreciation = 0
-   n = len(monthly_depreciation)
-   for i in range(n):
-      total_monthly_depreciation += monthly_depreciation[i]
-   total_fixed_cost = total_monthly_cost + total_monthly_depreciation
-   return total_fixed_cost
-def revenue(quantity_sold, food_price):
-   revenue = quantity_sold * food_price
-   return revenue
-def total_revenue (revenue):
-   total_revenue = 0
-   n = len(revenue)
-   for i in range(n):
-      total_revenue += revenue[i]
-   return total_revenue
-def cogs(quantity_sold, unit_cogs):
-   cogs = quantity_sold * unit_cogs
-   return cogs
-def total_cogs (cogs):
-   total_cogs = 0
-   n = len(cogs)
-   for i in range(n):
-      total_cogs += cogs[i]
-   return total_cogs
-def operating_cost(total_cogs, total_fixed_cost):
-   operating_cost = total_fixed_cost + total_cogs
-   return operating_cost
-def operating_profit(operating_cost, total_revenue):
-   operating_profit = total_revenue - operating_cost
-   return operating_profit
-def contribution_margin_unit(food_price, unit_cogs):
-   contribution_margin_unit = food_price - unit_cogs
-   return contribution_margin_unit
-def contribution_margin_item(cogs, revenue):
-   contribution_margin_item = revenue - cogs
-   return contribution_margin_item
-def total_contribution_margin(total_revenue, total_cogs):
-   total_contribution_margin = total_revenue - total_cogs
-   return total_contribution_margin
-def contribution_margin_ratio(total_contribution_margin, total_revenue ):
-   contribution_margin_ratio = total_contribution_margin / total_revenue
-   return contribution_margin_ratio
-def operating_profit_margin(operating_profit, total_revenue):
-   operating_profit_margin = operating_profit / total_revenue
-   return operating_profit_margin
-def fixed_cost_ratio(total_fixed_cost, total_revenue):
-   fixed_cost_ratio = total_fixed_cost / total_revenue
-   return fixed_cost_ratio
-def threshold_popularity (total_volumn, menu_size):
-   threshold_popularity = total_volumn / menu_size
-   return threshold_popularity
-def threshold_profit(total_contribution_margin, total_volume):
-   threshold_profit = total_contribution_margin / total_volume
-   return threshold_profit
-def total_volume(quantity_sold):
-   total_volume = 0
-   n = len(quantity_sold)
-   for i in range(n):
-      total_volume += quantity_sold[i]
-   return total_volume
-total_contribution_margin = total_contribution_margin(total_revenue, total_cogs)
-menu_size = len(quantity_sold)
-def item_classification(threshold_popularity, threshold_profit, quantity_sold, total_contribution_margin):
-   if quantity_sold >= threshold_popularity and total_contribution_margin >= threshold_profit:
-      classify_item = "STAR"
-   elif quantity_sold >= threshold_popularity and total_contribution_margin < threshold_profit:
-      classify_item = "PLOWHORSE"
-   elif quantity_sold < threshold_popularity and total_contribution_margin >= threshold_profit:
-      classify_item = "PUZZLE"
-   else :
-      classify_item = "DOG"
-   return classify_item
-def menu_classification(threshold_popularity, threshold_profit, quantity_sold, total_contribution_margin):
-   menu_classification = []
-   n = len(quantity_sold)
-   for i in range(n):
-      menu_classification.append(item_classification(threshold_popularity, threshold_profit, quantity_sold[i], total_contribution_margin[i]))
-   return menu_classification
+def raw_unit_cost(
+    package_price: Decimal,
+    standard_package_quantity: Decimal,
+) -> Decimal:
+    if standard_package_quantity <= ZERO:
+        raise ValueError("standard_package_quantity must be greater than zero")
+    return package_price / standard_package_quantity
 
+
+def usable_quantity(
+    standard_package_quantity: Decimal,
+    waste_rate: Decimal,
+) -> Decimal:
+    if standard_package_quantity <= ZERO:
+        raise ValueError("standard_package_quantity must be greater than zero")
+    if not ZERO <= waste_rate < ONE:
+        raise ValueError("waste_rate must be at least zero and less than one")
+    return standard_package_quantity * (ONE - waste_rate)
+
+
+def effective_unit_cost(
+    usable_quantity: Decimal,
+    package_price: Decimal,
+) -> Decimal:
+    if usable_quantity <= ZERO:
+        raise ValueError("usable_quantity must be greater than zero")
+    return package_price / usable_quantity
+
+
+def ingredient_line_cost(
+    standard_ingredient_quantity: Decimal,
+    effective_unit_cost: Decimal,
+) -> Decimal:
+    if standard_ingredient_quantity < ZERO or effective_unit_cost < ZERO:
+        raise ValueError("Ingredient quantity and unit cost cannot be negative")
+    return standard_ingredient_quantity * effective_unit_cost
+
+
+def unit_cogs(ingredient_line_cost: Sequence[Decimal]) -> Decimal:
+    return sum(ingredient_line_cost, ZERO)
+
+
+def monthly_cost(amount: Decimal, month_period: Decimal) -> Decimal:
+    if month_period <= ZERO:
+        raise ValueError("month_period must be greater than zero")
+    return amount / month_period
+
+
+def monthly_depreciation(
+    amount: Decimal,
+    useful_life_months: Decimal,
+) -> Decimal:
+    if useful_life_months <= ZERO:
+        raise ValueError("useful_life_months must be greater than zero")
+    return amount / useful_life_months
+
+
+def total_fixed_cost(
+    monthly_cost: Sequence[Decimal],
+    monthly_depreciation: Sequence[Decimal],
+) -> Decimal:
+    return sum(monthly_cost, ZERO) + sum(monthly_depreciation, ZERO)
+
+
+def revenue(quantity_sold: Decimal, food_price: Decimal) -> Decimal:
+    return quantity_sold * food_price
+
+
+def total_revenue(revenue: Sequence[Decimal]) -> Decimal:
+    return sum(revenue, ZERO)
+
+
+def cogs(quantity_sold: Decimal, unit_cogs: Decimal) -> Decimal:
+    return quantity_sold * unit_cogs
+
+
+def total_cogs(cogs: Sequence[Decimal]) -> Decimal:
+    return sum(cogs, ZERO)
+
+
+def operating_cost(total_cogs: Decimal, total_fixed_cost: Decimal) -> Decimal:
+    return total_cogs + total_fixed_cost
+
+
+def operating_profit(operating_cost: Decimal, total_revenue: Decimal) -> Decimal:
+    return total_revenue - operating_cost
+
+
+def contribution_margin_unit(food_price: Decimal, unit_cogs: Decimal) -> Decimal:
+    return food_price - unit_cogs
+
+
+def contribution_margin_item(cogs: Decimal, revenue: Decimal) -> Decimal:
+    return revenue - cogs
+
+
+def total_contribution_margin(
+    total_revenue: Decimal,
+    total_cogs: Decimal,
+) -> Decimal:
+    return total_revenue - total_cogs
+
+
+def contribution_margin_ratio(
+    total_contribution_margin: Decimal,
+    total_revenue: Decimal,
+) -> Decimal:
+    if total_revenue == ZERO:
+        raise ValueError("total_revenue must not be zero")
+    return total_contribution_margin / total_revenue
+
+
+def operating_profit_margin(
+    operating_profit: Decimal,
+    total_revenue: Decimal,
+) -> Decimal:
+    if total_revenue == ZERO:
+        raise ValueError("total_revenue must not be zero")
+    return operating_profit / total_revenue
+
+
+def fixed_cost_ratio(
+    total_fixed_cost: Decimal,
+    total_revenue: Decimal,
+) -> Decimal:
+    if total_revenue == ZERO:
+        raise ValueError("total_revenue must not be zero")
+    return total_fixed_cost / total_revenue
+
+
+def round_money(amount: Decimal) -> Decimal:
+    """Round a final displayed VND amount to the nearest dong."""
+    return amount.quantize(Decimal("1"), rounding=ROUND_HALF_UP)
+
+
+def total_volume(quantity_sold: Sequence[Decimal]) -> Decimal:
+    if any(
+        not quantity.is_finite() or quantity < ZERO
+        for quantity in quantity_sold
+    ):
+        raise ValueError("Sales quantities must be finite and non-negative")
+    return sum(quantity_sold, ZERO)
+
+
+def threshold_popularity(total_volume: Decimal, menu_size: int) -> Decimal:
+    if menu_size <= 0:
+        raise ValueError("menu_size must be greater than zero")
+    if not total_volume.is_finite() or total_volume < ZERO:
+        raise ValueError("total_volume must be finite and non-negative")
+    return total_volume / menu_size
+
+
+def threshold_profit(
+    total_contribution_margin: Decimal,
+    total_volume: Decimal,
+) -> Decimal:
+    if not total_volume.is_finite() or total_volume <= ZERO:
+        raise ValueError("total_volume must be greater than zero")
+    if not total_contribution_margin.is_finite():
+        raise ValueError("total_contribution_margin must be finite")
+    return total_contribution_margin / total_volume
+
+
+def item_classification(
+    popularity_threshold: Decimal,
+    profit_threshold: Decimal,
+    quantity_sold: Decimal,
+    unit_contribution_margin: Decimal,
+) -> str:
+    values = (
+        popularity_threshold,
+        profit_threshold,
+        quantity_sold,
+        unit_contribution_margin,
+    )
+    if any(not value.is_finite() for value in values):
+        raise ValueError("Classification inputs must be finite")
+    if quantity_sold < ZERO:
+        raise ValueError("quantity_sold must be non-negative")
+
+    if (
+        quantity_sold >= popularity_threshold
+        and unit_contribution_margin >= profit_threshold
+    ):
+        return "STAR"
+    if quantity_sold >= popularity_threshold:
+        return "PLOWHORSE"
+    if unit_contribution_margin >= profit_threshold:
+        return "PUZZLE"
+    return "DOG"
+
+
+def menu_classification(
+    quantity_sold: Sequence[Decimal],
+    unit_contribution_margin: Sequence[Decimal],
+) -> list[str]:
+    if len(quantity_sold) != len(unit_contribution_margin):
+        raise ValueError(
+            "quantity_sold and unit_contribution_margin must have equal lengths"
+        )
+    if not quantity_sold:
+        return []
+    if any(not margin.is_finite() for margin in unit_contribution_margin):
+        raise ValueError("Unit contribution margins must be finite")
+
+    volume = total_volume(quantity_sold)
+    if volume == ZERO:
+        raise ValueError("Cannot classify a menu with no sales")
+
+    total_margin = sum(
+        (
+            quantity * margin
+            for quantity, margin in zip(quantity_sold, unit_contribution_margin)
+        ),
+        ZERO,
+    )
+    popularity = threshold_popularity(volume, len(quantity_sold))
+    profit = threshold_profit(total_margin, volume)
+    return [
+        item_classification(popularity, profit, quantity, margin)
+        for quantity, margin in zip(quantity_sold, unit_contribution_margin)
+    ]

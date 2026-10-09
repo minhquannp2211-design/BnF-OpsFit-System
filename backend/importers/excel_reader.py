@@ -2,20 +2,95 @@ from collections import defaultdict
 from pathlib import Path
 import openpyxl
 
-from typing import TypeAlias
+from typing import TypeAlias, TypedDict
 import math
 import re
 import unicodedata #for creating food_id
 
-from backend.utils.unit_conversion import are_compatible_units
+from backend.utils.unit_conversion import (
+    standardize_quantity,
+)
 
 
 CURRENT_DIR = Path(__file__).resolve().parent
 FILE_PATH = CURRENT_DIR.parent.parent / "data" / "templates" / "BnF_Opsfit_System.xlsx"
 workbook = openpyxl.load_workbook(FILE_PATH, read_only = True, data_only = True)
+required_sheets = {"menu", "recipe", "ingredients"}
+missing_sheets = required_sheets - set(workbook.sheetnames)
+if missing_sheets:
+    workbook.close()
+    raise ValueError(f"Missing workbook sheets: {sorted(missing_sheets)}")
 menu_sheet = workbook["menu"]
 recipe_sheet = workbook["recipe"]
 ingredients_sheet = workbook["ingredients"]
+
+
+def _field_names(sheet: object, sheet_name: str) -> dict[str, int]:
+    headers = next(sheet.iter_rows(min_row=1, max_row=1, values_only=True))
+    fields: dict[str, int] = {}
+    for index, header in enumerate(headers):
+        if header is None:
+            continue
+        match = re.search(r"\(([^()]*)\)\s*$", str(header))
+        if match:
+            fields[match.group(1).strip().casefold()] = index
+    if not fields:
+        raise ValueError(f"Missing field names in '{sheet_name}' header")
+    return fields
+
+
+def _require_fields(
+    fields: dict[str, int],
+    required: tuple[str, ...],
+    sheet_name: str,
+) -> None:
+    missing = [field for field in required if field not in fields]
+    if missing:
+        raise ValueError(
+            f"Missing columns {missing} in sheet '{sheet_name}'"
+        )
+
+
+class Cost(TypedDict):
+    cost_id: str
+    cost_category: str
+    cost_name: str
+    cost_type: str
+    amount: float
+    period_months: float | None
+    useful_life_months: float | None
+    allocation_method: str
+    monthly_amount: float
+
+
+class Sale(TypedDict):
+    food_id: str
+    period: str
+    quantity_sold: float
+
+
+_require_fields(
+    _field_names(menu_sheet, "menu"),
+    ("food_id", "food_name", "food_size", "food_price"),
+    "menu",
+)
+_require_fields(
+    _field_names(recipe_sheet, "recipe"),
+    (
+        "recipe_id", "food_id", "food_name", "ingredient_id",
+        "food_size", "ingredient_name", "ingredient_quantity",
+        "ingredient_unit",
+    ),
+    "recipe",
+)
+_require_fields(
+    _field_names(ingredients_sheet, "ingredients"),
+    (
+        "ingredient_id", "ingredient_name", "package_price",
+        "package_quantity", "package_unit", "waste_rate",
+    ),
+    "ingredients",
+)
 
 Food: TypeAlias = tuple[
     str,  #food_id
@@ -408,11 +483,25 @@ for row_number, row in enumerate(
     ingredient_name_index[
         normalize_text(ingredient_name)
     ] = ingredient_id
+for ingredient_index, ingredient in enumerate(ingredients):
+    package_quantity, package_unit = standardize_quantity(
+        ingredient[3], ingredient[4]
+    )
+    ingredients[ingredient_index] = (
+        ingredient[0], ingredient[1], ingredient[2],
+        package_quantity, package_unit, ingredient[5],
+    )
+
+ingredient_id_index = {
+    ingredient[0]: ingredient for ingredient in ingredients
+}
+
 for recipe_key, recipe_details in recipe_dict.items():
-    for recipe_detail in recipe_details:
+    for detail_index, recipe_detail in enumerate(recipe_details):
         food_id = recipe_detail[0]
         ingredient_id = recipe_detail[1]
         ingredient_name = recipe_detail[2]
+        ingredient_quantity = recipe_detail[3]
         ingredient_unit = recipe_detail[4]
 
         ingredient = ingredient_id_index.get(ingredient_id)
@@ -426,16 +515,182 @@ for recipe_key, recipe_details in recipe_dict.items():
 
         package_unit = ingredient[4]
 
-        if not are_compatible_units(
-            ingredient_unit,
-            package_unit,
-        ):
-            raise ValueError(
-                f"Unit mismatch for ingredient "
-                f"'{ingredient_name}' in recipe "
-                f"'{recipe_key[0]}': recipe uses "
-                f"'{ingredient_unit}', ingredients "
-                f"sheet uses '{package_unit}'"
+        try:
+            standard_quantity, standard_unit = standardize_quantity(
+                ingredient_quantity,
+                ingredient_unit,
+                expected_unit=package_unit,
             )
+        except ValueError as error:
+            raise ValueError(
+                f"Invalid unit for ingredient '{ingredient_name}' in recipe "
+                f"'{recipe_key[0]}': {error}"
+            ) from error
+
+        recipe_details[detail_index] = (
+            food_id,
+            ingredient_id,
+            ingredient_name,
+            standard_quantity,
+            standard_unit,
+        )
 
 workbook.close()
+
+
+def load_costs_and_sales(
+    workbook_path: str | Path,
+    valid_food_ids: set[str],
+) -> tuple[list[Cost], list[Sale]]:
+    """Read and normalize costs and monthly sales from a workbook."""
+    source = openpyxl.load_workbook(
+        workbook_path, read_only=True, data_only=True
+    )
+    try:
+        required_sheets = {"costs", "sales"}
+        missing_sheets = required_sheets - set(source.sheetnames)
+        if missing_sheets:
+            raise ValueError(f"Missing workbook sheets: {sorted(missing_sheets)}")
+
+        costs_sheet = source["costs"]
+        cost_fields = _field_names(costs_sheet, "costs")
+        _require_fields(
+            cost_fields,
+            (
+                "cost_id", "cost_category", "cost_name", "cost_type",
+                "amount", "period_months", "useful_life_months",
+                "allocation_method",
+            ),
+            "costs",
+        )
+        costs: list[Cost] = []
+        cost_ids: set[str] = set()
+        for row_number, row in enumerate(
+            costs_sheet.iter_rows(min_row=2, values_only=True), start=2
+        ):
+            if not any(value is not None for value in row):
+                continue
+            cost_id = require_text(
+                row[cost_fields["cost_id"]], "cost_id", "costs", row_number
+            )
+            if cost_id in cost_ids:
+                raise ValueError(
+                    f"Duplicated cost_id '{cost_id}' in costs row {row_number}"
+                )
+            category = require_text(
+                row[cost_fields["cost_category"]],
+                "cost_category", "costs", row_number,
+            )
+            name = require_text(
+                row[cost_fields["cost_name"]], "cost_name", "costs", row_number
+            )
+            cost_type = require_text(
+                row[cost_fields["cost_type"]], "cost_type", "costs", row_number
+            ).upper()
+            if cost_type not in {"FIXED", "VARIABLE"}:
+                raise ValueError(
+                    f"Invalid cost_type '{cost_type}' in costs row {row_number}"
+                )
+            amount = require_number(
+                row[cost_fields["amount"]], "amount", "costs", row_number
+            )
+            if amount < 0:
+                raise ValueError(f"Negative amount in costs row {row_number}")
+
+            raw_useful_life = row[cost_fields["useful_life_months"]]
+            useful_life_months = None
+            if raw_useful_life is not None and str(raw_useful_life).strip():
+                useful_life_months = require_number(
+                    raw_useful_life, "useful_life_months", "costs", row_number
+                )
+                if useful_life_months <= 0:
+                    raise ValueError(
+                        f"'useful_life_months' must be greater than zero "
+                        f"in costs row {row_number}"
+                    )
+
+            raw_period = row[cost_fields["period_months"]]
+            period_months = None
+            if raw_period is not None and str(raw_period).strip():
+                period_months = require_number(
+                    raw_period, "period_months", "costs", row_number
+                )
+                if period_months <= 0:
+                    raise ValueError(
+                        f"'period_months' must be greater than zero "
+                        f"in costs row {row_number}"
+                    )
+            if useful_life_months is not None and period_months is not None:
+                raise ValueError(
+                    f"Use either period_months or useful_life_months, "
+                    f"not both, in costs row {row_number}"
+                )
+            if useful_life_months is None and period_months is None:
+                raise ValueError(
+                    f"Missing 'period_months' in costs row {row_number}"
+                )
+
+            allocation_method = require_text(
+                row[cost_fields["allocation_method"]],
+                "allocation_method", "costs", row_number,
+            )
+            monthly_amount = amount / (
+                useful_life_months or period_months
+            )
+            costs.append({
+                "cost_id": cost_id,
+                "cost_category": category,
+                "cost_name": name,
+                "cost_type": cost_type,
+                "amount": amount,
+                "period_months": period_months,
+                "useful_life_months": useful_life_months,
+                "allocation_method": allocation_method,
+                "monthly_amount": monthly_amount,
+            })
+            cost_ids.add(cost_id)
+
+        sales_sheet = source["sales"]
+        sales_fields = _field_names(sales_sheet, "sales")
+        _require_fields(
+            sales_fields, ("item_code", "quantity_sold_monthly"), "sales"
+        )
+        sales: list[Sale] = []
+        sold_food_ids: set[str] = set()
+        for row_number, row in enumerate(
+            sales_sheet.iter_rows(min_row=2, values_only=True), start=2
+        ):
+            if not any(value is not None for value in row):
+                continue
+            food_id = require_text(
+                row[sales_fields["item_code"]], "item_code", "sales", row_number
+            )
+            if food_id not in valid_food_ids:
+                raise ValueError(
+                    f"Unknown item_code '{food_id}' in sales row {row_number}"
+                )
+            if food_id in sold_food_ids:
+                raise ValueError(
+                    f"Duplicated item_code '{food_id}' in sales row {row_number}"
+                )
+            quantity_sold = require_number(
+                row[sales_fields["quantity_sold_monthly"]],
+                "quantity_sold_monthly", "sales", row_number,
+            )
+            if quantity_sold < 0:
+                raise ValueError(
+                    f"Negative quantity_sold_monthly in sales row {row_number}"
+                )
+            sales.append({
+                "food_id": food_id,
+                "period": "monthly",
+                "quantity_sold": quantity_sold,
+            })
+            sold_food_ids.add(food_id)
+
+        return costs, sales
+    finally:
+        source.close()
+
+
+costs, sales = load_costs_and_sales(FILE_PATH, set(menu_id_index))

@@ -2,6 +2,7 @@ from functools import lru_cache
 from math import isfinite
 from numbers import Real
 from pathlib import Path
+import re
 
 import openpyxl
 
@@ -19,6 +20,20 @@ def _unit_index() -> dict[str, tuple[str, str, float]]:
     workbook = openpyxl.load_workbook(WORKBOOK_PATH, read_only=True, data_only=True)
     try:
         sheet = workbook["units"]
+        headers = next(sheet.iter_rows(min_row=1, max_row=1, values_only=True))
+        fields = {
+            match.group(1).strip().casefold()
+            for value in headers
+            if value is not None
+            for match in [re.search(r"\(([^()]*)\)\s*$", str(value))]
+            if match
+        }
+        required_fields = {
+            "unit_code", "unit_name", "unit_group", "target_unit",
+            "conversion_factor", "aliases",
+        }
+        if missing := required_fields - fields:
+            raise ValueError(f"Missing columns {sorted(missing)} in sheet 'units'")
         definitions: dict[str, tuple[str, str, float]] = {}
         alias_rows: list[tuple[str, object]] = []
         for row_number, row in enumerate(
@@ -39,7 +54,7 @@ def _unit_index() -> dict[str, tuple[str, str, float]]:
             if not isfinite(factor) or factor <= 0:
                 raise ValueError(f"Invalid factor for unit '{code}'")
             definitions[code] = (group, standard_unit, factor)
-            alias_rows.append((code, row[5]))
+            alias_rows.append((code, row[5] if len(row) > 5 else None))
 
         for code, (group, standard_unit, _) in definitions.items():
             target = definitions.get(standard_unit)
@@ -96,3 +111,19 @@ def to_standard_quantity(quantity: Real, unit: str) -> float:
 
     conversion_factor = _unit_definition(unit)[2]
     return numeric_quantity * conversion_factor
+
+
+def standardize_quantity(
+    quantity: Real,
+    unit: str,
+    expected_unit: str | None = None,
+) -> tuple[float, str]:
+    """Return a quantity in its standard unit, checking an optional reference unit."""
+    standard_unit = target_unit(unit)
+    if expected_unit is not None and not are_compatible_units(
+        unit, expected_unit
+    ):
+        raise ValueError(
+            f"Incompatible units '{unit}' and '{expected_unit}'"
+        )
+    return to_standard_quantity(quantity, unit), standard_unit

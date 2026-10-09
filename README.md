@@ -23,10 +23,15 @@ backend/
 ├── services/                  Nghiệp vụ ứng dụng
 └── utils/                     Tiện ích dùng chung
 data/
-└── templates/
-    └── BnF_Opsfit_System.xlsx File Excel mẫu
+├── templates/
+│   └── BnF_Opsfit_System.xlsx File Excel mẫu
+└── tests/
+    └── BnF_Opsfit_Test_Data.xlsx Workbook fixture kiểm thử
 frontend/
 ├── css/                       Giao diện
 └── js/                        Xử lý phía trình duyệt
-tests/                         Kiểm thử
+tests/                         Kiểm thử importer và công thức
 ```
+
+Phase 1 (workbook, importer và công thức nền tảng) đã hoàn tất. Chạy kiểm thử
+bằng `python -m unittest discover -s tests -v` từ thư mục repository này.
